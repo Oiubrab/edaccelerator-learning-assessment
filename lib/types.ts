@@ -28,3 +28,11 @@ export interface QuizState {
   isComplete: boolean;
   score: number;
 }
+
+export interface AttemptHistory {
+  date: string;
+  score: number;
+  total: number;
+  percentage: number;
+  timestamp: number;
+}

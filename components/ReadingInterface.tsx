@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Question, UserAnswer } from '@/lib/types';
+import { Question, UserAnswer, AttemptHistory } from '@/lib/types';
 import { passageChunks } from '@/lib/data';
 import confetti from 'canvas-confetti';
 
@@ -91,6 +91,48 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
     }
   }, [showFeedback, canContinue]);
 
+  // Define handleNext before it's used in useEffect
+  const handleNext = useCallback(() => {
+    setShowFeedback(false);
+    setUserAnswer('');
+    setCanContinue(false);
+    setShowHint(false);
+    
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+    } else {
+      setIsComplete(true);
+      
+      // Save attempt to history
+      const finalAnswers = answers;
+      const score = finalAnswers.filter(a => a.isCorrect).length;
+      const percentage = Math.round((score / questions.length) * 100);
+      
+      const attempt = {
+        date: new Date().toISOString(),
+        score,
+        total: questions.length,
+        percentage,
+        timestamp: Date.now()
+      };
+      
+      const history = JSON.parse(localStorage.getItem('quiz-history') || '[]');
+      history.push(attempt);
+      localStorage.setItem('quiz-history', JSON.stringify(history));
+      
+      // Trigger confetti after a brief delay
+      setTimeout(() => {
+        if (percentage >= 80) {
+          confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: { y: 0.6 }
+          });
+        }
+      }, 300);
+    }
+  }, [currentQuestionIndex, questions.length, answers]);
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -152,47 +194,6 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
       setIsValidating(false);
     }
   };
-
-  const handleNext = useCallback(() => {
-    setShowFeedback(false);
-    setUserAnswer('');
-    setCanContinue(false);
-    setShowHint(false);
-    
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else {
-      setIsComplete(true);
-      
-      // Save attempt to history
-      const finalAnswers = answers;
-      const score = finalAnswers.filter(a => a.isCorrect).length;
-      const percentage = Math.round((score / questions.length) * 100);
-      
-      const attempt = {
-        date: new Date().toISOString(),
-        score,
-        total: questions.length,
-        percentage,
-        timestamp: Date.now()
-      };
-      
-      const history = JSON.parse(localStorage.getItem('quiz-history') || '[]');
-      history.push(attempt);
-      localStorage.setItem('quiz-history', JSON.stringify(history));
-      
-      // Trigger confetti after a brief delay
-      setTimeout(() => {
-        if (percentage >= 80) {
-          confetti({
-            particleCount: 100,
-            spread: 70,
-            origin: { y: 0.6 }
-          });
-        }
-      }, 300);
-    }
-  }, [currentQuestionIndex, questions.length, answers]);
 
   const handleRestart = () => {
     setCurrentQuestionIndex(0);
