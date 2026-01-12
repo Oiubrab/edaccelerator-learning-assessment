@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeAnswer, checkAnswer } from './answerValidation';
+import { checkAnswer } from './answerValidation';
 
 describe('Answer Validation Logic', () => {
   describe('Exact Matches', () => {
