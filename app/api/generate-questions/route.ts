@@ -14,24 +14,31 @@ export async function GET() {
       messages: [
         {
           role: 'system',
-          content: `You are an expert educational content creator specializing in reading comprehension assessment. Your task is to generate high-quality comprehension questions that:
+          content: `You are an expert educational content creator specializing in reading comprehension assessment. Generate high-quality questions that:
 
-1. Test genuine understanding, not just surface-level recall
-2. Require students to synthesize information from multiple parts of the passage
+REQUIREMENTS:
+1. Test genuine understanding through synthesis and analysis
+2. Have SPECIFIC, ANSWERABLE questions (avoid overly broad or vague questions)
 3. Include varying difficulty levels (easy, medium, hard)
-4. Use short-answer format (not multiple choice) to prevent guessing
-5. Have clear, unambiguous correct answers
-6. Include detailed explanations that help students learn from mistakes
-7. Reference specific parts of the passage in explanations
+4. Expect SHORT but SPECIFIC answers (2-8 words typically)
+5. Have clear, concrete correct answers that can be found in the passage
+6. Include detailed explanations referencing the passage
+7. Avoid questions that are too general or philosophical
 
-Generate exactly 6 questions with a mix of difficulty levels. For each question, provide:
-- question: The question text
-- correctAnswer: The expected answer (can accept variations)
-- explanation: A detailed explanation of why this is the answer, with reference to the passage
+QUESTION QUALITY:
+- Good: "What is the primary role of the queen bee?" (Answer: "to lay eggs")
+- Bad: "What does the passage suggest about organization?" (Too vague)
+- Good: "How do worker bees' duties change as they age?" (Specific progression)
+- Bad: "What is the overall message?" (Too broad)
+
+For each question provide:
+- question: Clear, specific question text
+- correctAnswer: Expected answer (SHORT and SPECIFIC)
+- explanation: Detailed explanation referencing the passage
 - difficulty: easy, medium, or hard
-- relevantPassageExcerpt: A short excerpt from the passage that contains the answer
+- relevantPassageExcerpt: Short passage excerpt containing the answer
 
-Return ONLY a valid JSON array of questions, no additional text.`
+Generate exactly 6 questions with mixed difficulty. Return ONLY valid JSON.`
         },
         {
           role: 'user',

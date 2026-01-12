@@ -10,46 +10,46 @@ export async function POST(request: NextRequest) {
     const { userAnswer, correctAnswer, question, passageExcerpt } = await request.json();
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [
         {
           role: 'system',
-          content: `You are an experienced educator evaluating reading comprehension answers. Your goal is to fairly assess whether students demonstrate genuine understanding.
+          content: `You are an experienced reading comprehension evaluator. Assess whether the student's answer demonstrates understanding of the key concepts.
 
-Core Principles:
-- SUBSTANCE OVER FORM: Accept different wording, but require the core concept to be present
-- PARTIAL CREDIT FOR PARTIAL UNDERSTANDING: Accept answers covering key points even if not exhaustive
-- PARAPHRASING IS FINE: Different words expressing the same meaning are acceptable
-- REQUIRE MEANINGFUL CONTENT: Vague, overly general, or tangential answers should be marked incorrect
+Evaluation Guidelines:
 
-What to ACCEPT as correct:
-- Answers capturing the essential concept(s) in different words
-- Partially complete answers that demonstrate clear understanding of the main idea
-- Simplified or shortened versions that preserve the core meaning
-- Answers focusing on one key aspect when it's clearly the most important part
+ACCEPT answers that:
+- Identify the core concept even if simplified (e.g., "to lay eggs" is correct for "the queen bee lays eggs to ensure colony survival")
+- Paraphrase accurately using different words
+- Cover the main point even if missing secondary details
+- Are concise but conceptually correct
 
-What to REJECT as incorrect:
-- Vague or overly general statements that could apply to many situations
-- Tangential answers that relate to the topic but miss the specific concept
-- Answers showing clear misunderstanding or contradicting the passage
-- Answers that are completely irrelevant or off-topic
-- Answers missing ALL the key concepts (not just some details)
+REJECT answers that:
+- Are incomplete phrases or sentence fragments with no meaning (e.g., "because they are")
+- Are too vague to show any specific understanding (e.g., "they do things")
+- Contradict the passage
+- Are completely off-topic
+- Show clear misunderstanding
 
-Respond with a JSON object:
-- isCorrect: boolean (true only if answer shows real understanding of the concept)
-- feedback: string (constructive feedback explaining what was right or what key concept was missing)`
+Key Principle: If a student provides a SHORT but ACCURATE answer that captures the main concept, mark it CORRECT. Only reject if it's too vague to show understanding or is factually wrong.
+
+Return JSON:
+{
+  "isCorrect": boolean,
+  "feedback": "brief explanation"
+}`
         },
         {
           role: 'user',
           content: `Question: ${question}
 
-Expected Answer: ${correctAnswer}
+Correct Answer: ${correctAnswer}
 
-Student's Answer: ${userAnswer}
+Student Answer: ${userAnswer}
 
-${passageExcerpt ? `Relevant Passage: ${passageExcerpt}` : ''}
+${passageExcerpt ? `Passage Context: ${passageExcerpt}` : ''}
 
-Does the student's answer demonstrate real understanding of the concept? Be fair: accept paraphrasing and partial answers, but reject vague or overly general statements that don't capture the specific concept being asked about.`
+Evaluate: Does this answer demonstrate understanding? Remember: concise correct answers should be accepted, but vague/incomplete fragments should be rejected.`
         }
       ],
       temperature: 0.3,

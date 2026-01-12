@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Question, UserAnswer } from '@/lib/types';
 import { passageChunks } from '@/lib/data';
-import { checkAnswer } from '@/lib/answerValidation';
+import confetti from 'canvas-confetti';
 
 interface ReadingInterfaceProps {
   questions: Question[];
@@ -17,12 +17,47 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
   const [isComplete, setIsComplete] = useState(false);
   const [selectedChunk, setSelectedChunk] = useState<string | null>(null);
   const [readingMode, setReadingMode] = useState<'guided' | 'full'>('guided');
+  const [isValidating, setIsValidating] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [expandedReviewItem, setExpandedReviewItem] = useState<number | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   
   const answerInputRef = useRef<HTMLInputElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
 
   const currentQuestion = questions[currentQuestionIndex];
   const currentAnswer = answers.find(a => a.questionId === currentQuestion?.id);
+
+  // Load progress from localStorage on mount
+  useEffect(() => {
+    const savedProgress = localStorage.getItem('reading-progress');
+    if (savedProgress) {
+      try {
+        const parsed = JSON.parse(savedProgress);
+        if (parsed.questionIds === questions.map(q => q.id).join(',')) {
+          setAnswers(parsed.answers || []);
+          setCurrentQuestionIndex(parsed.currentIndex || 0);
+          setIsComplete(parsed.isComplete || false);
+        }
+      } catch (e) {
+        console.error('Failed to load progress:', e);
+      }
+    }
+  }, [questions]);
+
+  // Save progress to localStorage whenever it changes
+  useEffect(() => {
+    if (answers.length > 0 || currentQuestionIndex > 0) {
+      const progress = {
+        questionIds: questions.map(q => q.id).join(','),
+        answers,
+        currentIndex: currentQuestionIndex,
+        isComplete,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('reading-progress', JSON.stringify(progress));
+    }
+  }, [answers, currentQuestionIndex, isComplete, questions]);
 
   useEffect(() => {
     if (answerInputRef.current && !showFeedback) {
@@ -36,20 +71,66 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
     }
   }, [showFeedback]);
 
-  const handleSubmitAnswer = () => {
-    if (!userAnswer.trim()) return;
-
-    const isCorrect = checkAnswer(userAnswer, currentQuestion.correctAnswer);
-    
-    const newAnswer: UserAnswer = {
-      questionId: currentQuestion.id,
-      userAnswer: userAnswer.trim(),
-      isCorrect,
-      timestamp: Date.now()
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Enter on feedback screen to go to next
+      if (showFeedback && e.key === 'Enter' && !isComplete) {
+        handleNext();
+      }
+      // Escape to restart when complete
+      if (isComplete && e.key === 'Escape') {
+        handleRestart();
+      }
     };
 
-    setAnswers([...answers, newAnswer]);
-    setShowFeedback(true);
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [showFeedback, isComplete]);
+
+  const handleSubmitAnswer = async () => {
+    if (!userAnswer.trim() || isValidating) return;
+
+    setIsValidating(true);
+
+    try {
+      // Use AI to validate the answer semantically
+      const response = await fetch('/api/validate-answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAnswer: userAnswer.trim(),
+          correctAnswer: currentQuestion.correctAnswer,
+          question: currentQuestion.question,
+          passageExcerpt: currentQuestion.relevantPassageExcerpt || ''
+        })
+      });
+
+      const validation = await response.json();
+      
+      const newAnswer: UserAnswer = {
+        questionId: currentQuestion.id,
+        userAnswer: userAnswer.trim(),
+        isCorrect: validation.isCorrect,
+        timestamp: Date.now()
+      };
+
+      setAnswers([...answers, newAnswer]);
+      setShowFeedback(true);
+    } catch (error) {
+      console.error('Error validating answer:', error);
+      // Fallback to marking as correct to not penalize user for technical issues
+      const newAnswer: UserAnswer = {
+        questionId: currentQuestion.id,
+        userAnswer: userAnswer.trim(),
+        isCorrect: true,
+        timestamp: Date.now()
+      };
+      setAnswers([...answers, newAnswer]);
+      setShowFeedback(true);
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   const handleNext = () => {
@@ -60,6 +141,34 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
       setIsComplete(true);
+      
+      // Save attempt to history
+      const finalAnswers = answers;
+      const score = finalAnswers.filter(a => a.isCorrect).length;
+      const percentage = Math.round((score / questions.length) * 100);
+      
+      const attempt = {
+        date: new Date().toISOString(),
+        score,
+        total: questions.length,
+        percentage,
+        timestamp: Date.now()
+      };
+      
+      const history = JSON.parse(localStorage.getItem('quiz-history') || '[]');
+      history.push(attempt);
+      localStorage.setItem('quiz-history', JSON.stringify(history));
+      
+      // Trigger confetti after a brief delay
+      setTimeout(() => {
+        if (percentage >= 80) {
+          confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: { y: 0.6 }
+          });
+        }
+      }, 300);
     }
   };
 
@@ -70,6 +179,10 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
     setShowFeedback(false);
     setIsComplete(false);
     setSelectedChunk(null);
+    setShowReview(false);
+    setExpandedReviewItem(null);
+    setShowHistory(false);
+    localStorage.removeItem('reading-progress');
   };
 
   const scrollToChunk = (chunkId: string) => {
@@ -83,6 +196,205 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
   if (isComplete) {
     const score = answers.filter(a => a.isCorrect).length;
     const percentage = Math.round((score / questions.length) * 100);
+
+    if (showHistory) {
+      const history = JSON.parse(localStorage.getItem('quiz-history') || '[]');
+      const sortedHistory = [...history].reverse(); // Most recent first
+      
+      const bestScore = history.length > 0 ? Math.max(...history.map((h: any) => h.percentage)) : 0;
+      const avgScore = history.length > 0 ? Math.round(history.reduce((sum: number, h: any) => sum + h.percentage, 0) / history.length) : 0;
+      
+      return (
+        <div className="max-w-4xl mx-auto p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="mb-6">
+              <button
+                onClick={() => setShowHistory(false)}
+                className="text-blue-600 hover:text-blue-700 font-medium mb-4 flex items-center gap-2"
+              >
+                ← Back to Results
+              </button>
+              <h2 className="text-3xl font-bold text-gray-800 mb-2">Attempt History</h2>
+              <p className="text-gray-600">Track your progress over time</p>
+            </div>
+
+            {history.length > 0 && (
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-50 rounded-lg p-4 text-center">
+                  <p className="text-sm text-gray-600 mb-1">Total Attempts</p>
+                  <p className="text-3xl font-bold text-blue-600">{history.length}</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-4 text-center">
+                  <p className="text-sm text-gray-600 mb-1">Best Score</p>
+                  <p className="text-3xl font-bold text-green-600">{bestScore}%</p>
+                </div>
+                <div className="bg-purple-50 rounded-lg p-4 text-center">
+                  <p className="text-sm text-gray-600 mb-1">Average Score</p>
+                  <p className="text-3xl font-bold text-purple-600">{avgScore}%</p>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-3 mb-8">
+              {sortedHistory.length > 0 ? (
+                sortedHistory.map((attempt: any, index: number) => {
+                  const date = new Date(attempt.date);
+                  const isLatest = index === 0;
+                  return (
+                    <div key={attempt.timestamp} className={`rounded-lg p-4 border-2 ${
+                      isLatest ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {isLatest && (
+                            <span className="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded">
+                              Latest
+                            </span>
+                          )}
+                          <div>
+                            <p className="font-semibold text-gray-800">
+                              {date.toLocaleDateString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric', 
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {attempt.score} out of {attempt.total} questions correct
+                            </p>
+                          </div>
+                        </div>
+                        <div className={`text-3xl font-bold ${
+                          attempt.percentage >= 80 ? 'text-green-600' : 
+                          attempt.percentage >= 60 ? 'text-yellow-600' : 
+                          'text-red-600'
+                        }`}>
+                          {attempt.percentage}%
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <p>No attempt history yet</p>
+                  <p className="text-sm mt-2">Complete a quiz to start tracking your progress</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              {history.length > 0 && (
+                <button
+                  onClick={() => {
+                    if (confirm('Are you sure you want to clear all history? This cannot be undone.')) {
+                      localStorage.removeItem('quiz-history');
+                      setShowHistory(false);
+                    }
+                  }}
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-8 rounded-lg transition-colors"
+                >
+                  Clear History
+                </button>
+              )}
+              <button
+                onClick={handleRestart}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (showReview) {
+      return (
+        <div className="max-w-4xl mx-auto p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="mb-6">
+              <button
+                onClick={() => setShowReview(false)}
+                className="text-blue-600 hover:text-blue-700 font-medium mb-4 flex items-center gap-2"
+              >
+                ← Back to Results
+              </button>
+              <h2 className="text-3xl font-bold text-gray-800 mb-2">Review Answers</h2>
+              <p className="text-gray-600">Click on any question to see the explanation</p>
+            </div>
+
+            <div className="space-y-3">
+              {questions.map((q, index) => {
+                const answer = answers.find(a => a.questionId === q.id);
+                const isExpanded = expandedReviewItem === index;
+                return (
+                  <div key={q.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => setExpandedReviewItem(isExpanded ? null : index)}
+                      className="w-full p-4 text-left hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${
+                          answer?.isCorrect ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                        }`}>
+                          {answer?.isCorrect ? '✓' : '✗'}
+                        </span>
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-800">{q.question}</p>
+                        </div>
+                        <span className="text-gray-400">{isExpanded ? '▼' : '▶'}</span>
+                      </div>
+                    </button>
+                    
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-2 bg-gray-50 border-t border-gray-200">
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-700 mb-1">Your answer:</p>
+                            <p className="text-gray-800">{answer?.userAnswer}</p>
+                          </div>
+                          
+                          {!answer?.isCorrect && (
+                            <div>
+                              <p className="text-sm font-semibold text-green-700 mb-1">Correct answer:</p>
+                              <p className="text-green-800">{q.correctAnswer}</p>
+                            </div>
+                          )}
+                          
+                          <div>
+                            <p className="text-sm font-semibold text-gray-700 mb-1">Explanation:</p>
+                            <p className="text-gray-700 leading-relaxed">{q.explanation}</p>
+                          </div>
+                          
+                          {q.relevantPassageExcerpt && (
+                            <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                              <p className="text-xs font-semibold text-blue-800 mb-1">From the passage:</p>
+                              <p className="text-sm italic text-blue-900">"{q.relevantPassageExcerpt}"</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-8 flex gap-3">
+              <button
+                onClick={handleRestart}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="max-w-4xl mx-auto p-4">
@@ -98,7 +410,7 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
               </span>
             </div>
             <h2 className="text-3xl font-bold text-gray-800 mb-2">
-              {percentage >= 80 ? '🎉 Excellent Work!' : percentage >= 60 ? '👍 Good Effort!' : '💪 Keep Practicing!'}
+              {percentage >= 80 ? 'Excellent Work!' : percentage >= 60 ? 'Good Effort!' : 'Keep Practicing!'}
             </h2>
             <p className="text-xl text-gray-600">
               You got {score} out of {questions.length} questions correct
@@ -134,12 +446,28 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
             })}
           </div>
 
-          <button
-            onClick={handleRestart}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors"
-          >
-            Try Again
-          </button>
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowReview(true)}
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+              >
+                Review Answers
+              </button>
+              <button
+                onClick={() => setShowHistory(true)}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+              >
+                View History
+              </button>
+            </div>
+            <button
+              onClick={handleRestart}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -247,7 +575,7 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
                     onChange={(e) => setUserAnswer(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSubmitAnswer()}
                     placeholder="Enter your answer here..."
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all text-gray-900 placeholder:text-gray-500"
                   />
                 </div>
 
@@ -267,10 +595,10 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
                     : 'bg-red-50 border-2 border-red-300'
                 }`}>
                   <div className="flex items-start gap-3 mb-3">
-                    <span className={`flex-shrink-0 text-2xl ${
-                      currentAnswer?.isCorrect ? '✅' : '❌'
+                    <span className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white font-bold ${
+                      currentAnswer?.isCorrect ? 'bg-green-500' : 'bg-red-500'
                     }`}>
-                      {currentAnswer?.isCorrect ? '✅' : '❌'}
+                      {currentAnswer?.isCorrect ? '✓' : '✗'}
                     </span>
                     <div>
                       <p className="font-semibold text-lg">
@@ -288,14 +616,14 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
                   </div>
 
                   <div className="mt-4 pt-4 border-t border-gray-300">
-                    <p className="font-semibold text-gray-800 mb-2">💡 Explanation:</p>
+                    <p className="font-semibold text-gray-800 mb-2">Explanation:</p>
                     <p className="text-gray-700 leading-relaxed mb-3">
                       {currentQuestion.explanation}
                     </p>
                     
                     {currentQuestion.relevantPassageExcerpt && (
                       <div className="bg-white bg-opacity-50 p-3 rounded border border-gray-300">
-                        <p className="text-xs font-semibold text-gray-600 mb-1">📖 From the passage:</p>
+                        <p className="text-xs font-semibold text-gray-600 mb-1">From the passage:</p>
                         <p className="text-sm italic text-gray-700">
                           "{currentQuestion.relevantPassageExcerpt}"
                         </p>
@@ -316,7 +644,7 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
 
           {/* Quick Navigation */}
           <div className="mt-8 pt-6 border-t border-gray-200">
-            <p className="text-sm font-medium text-gray-600 mb-3">📍 Quick navigation to passage sections:</p>
+            <p className="text-sm font-medium text-gray-600 mb-3">Quick navigation to passage sections:</p>
             <div className="flex flex-wrap gap-2">
               {passageChunks.map((chunk) => (
                 <button

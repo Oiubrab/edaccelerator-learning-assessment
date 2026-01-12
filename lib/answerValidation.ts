@@ -10,11 +10,15 @@ export const checkAnswer = (userAns: string, correctAns: string): boolean => {
   if (normalized === normalizedCorrect) return true;
   
   // Check if user answer contains the key terms
-  const correctWords = normalizedCorrect.split(/\s+/);
+  const correctWords = normalizedCorrect.split(/\s+/).filter(word => word.length > 2);
   const matchingWords = correctWords.filter(word => 
-    word.length > 3 && normalized.includes(word)
+    normalized.includes(word)
   );
   
-  // If most key words are present, consider it correct
-  return matchingWords.length >= Math.ceil(correctWords.length * 0.7);
+  // More lenient matching - if 60% of key words are present, consider it correct
+  // Also accept if the answer contains at least 2 key terms for short answers
+  if (correctWords.length <= 2) {
+    return matchingWords.length >= 1;
+  }
+  return matchingWords.length >= Math.ceil(correctWords.length * 0.6);
 };
