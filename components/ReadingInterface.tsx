@@ -21,6 +21,9 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
   const [showReview, setShowReview] = useState(false);
   const [expandedReviewItem, setExpandedReviewItem] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+  const [canContinue, setCanContinue] = useState(false);
+  const [readingTimeLeft, setReadingTimeLeft] = useState(3);
   
   const answerInputRef = useRef<HTMLInputElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
@@ -71,11 +74,28 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
     }
   }, [showFeedback]);
 
+  // Mandatory reading time for explanations
+  useEffect(() => {
+    if (showFeedback && !canContinue) {
+      setReadingTimeLeft(3);
+      const timer = setInterval(() => {
+        setReadingTimeLeft(prev => {
+          if (prev <= 1) {
+            setCanContinue(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [showFeedback]);
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      // Enter on feedback screen to go to next
-      if (showFeedback && e.key === 'Enter' && !isComplete) {
+      // Enter on feedback screen to go to next (only if can continue)
+      if (showFeedback && e.key === 'Enter' && !isComplete && canContinue) {
         handleNext();
       }
       // Escape to restart when complete
@@ -86,7 +106,7 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [showFeedback, isComplete]);
+  }, [showFeedback, isComplete, canContinue]);
 
   const handleSubmitAnswer = async () => {
     if (!userAnswer.trim() || isValidating) return;
@@ -136,6 +156,8 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
   const handleNext = () => {
     setShowFeedback(false);
     setUserAnswer('');
+    setCanContinue(false);
+    setShowHint(false);
     
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
@@ -182,6 +204,8 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
     setShowReview(false);
     setExpandedReviewItem(null);
     setShowHistory(false);
+    setShowHint(false);
+    setCanContinue(false);
     localStorage.removeItem('reading-progress');
   };
 
@@ -401,19 +425,26 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
         <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
           <div className="mb-6">
             <div className={`inline-flex items-center justify-center w-24 h-24 rounded-full mb-4 ${
-              percentage >= 80 ? 'bg-green-100' : percentage >= 60 ? 'bg-yellow-100' : 'bg-red-100'
+              percentage >= 80 ? 'bg-green-100' : percentage >= 60 ? 'bg-yellow-100' : 'bg-orange-100'
             }`}>
               <span className={`text-4xl font-bold ${
-                percentage >= 80 ? 'text-green-600' : percentage >= 60 ? 'text-yellow-600' : 'text-red-600'
+                percentage >= 80 ? 'text-green-600' : percentage >= 60 ? 'text-yellow-600' : 'text-orange-600'
               }`}>
                 {percentage}%
               </span>
             </div>
             <h2 className="text-3xl font-bold text-gray-800 mb-2">
-              {percentage >= 80 ? 'Excellent Work!' : percentage >= 60 ? 'Good Effort!' : 'Keep Practicing!'}
+              {percentage >= 80 ? 'Excellent learning!' : percentage >= 60 ? 'Great progress!' : 'Keep growing!'}
             </h2>
-            <p className="text-xl text-gray-600">
-              You got {score} out of {questions.length} questions correct
+            <p className="text-xl text-gray-600 mb-2">
+              You mastered {score} out of {questions.length} concepts
+            </p>
+            <p className="text-sm text-gray-500">
+              {percentage >= 80 
+                ? 'You have a strong understanding of this passage!' 
+                : percentage >= 60 
+                ? 'You\'re building solid comprehension skills!' 
+                : 'Every attempt helps you learn and improve!'}
             </p>
           </div>
 
@@ -536,7 +567,7 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm font-medium text-gray-500">
-                Question {currentQuestionIndex + 1} of {questions.length}
+                Learning checkpoint {currentQuestionIndex + 1} of {questions.length}
               </span>
               <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                 currentQuestion.difficulty === 'easy' 
@@ -555,6 +586,20 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
                 style={{ width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }}
               />
             </div>
+            
+            {currentQuestionIndex > 0 && currentQuestionIndex % 2 === 0 && (
+              <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-3">
+                <p className="text-sm text-purple-700">
+                  <span className="font-semibold">Learning tip:</span> {
+                    currentQuestionIndex === 2 
+                      ? "Try reading the question first, then scan the passage for relevant information."
+                      : currentQuestionIndex === 4
+                      ? "Look for keywords in both the question and passage to make connections."
+                      : "Take your time - understanding is more important than speed!"
+                  }
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="mb-6">
@@ -579,44 +624,65 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
                   />
                 </div>
 
-                <button
-                  onClick={handleSubmitAnswer}
-                  disabled={!userAnswer.trim()}
-                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-                >
-                  Submit Answer
-                </button>
+                {showHint && (
+                  <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
+                    <p className="text-sm font-semibold text-blue-800 mb-1">Hint:</p>
+                    <p className="text-sm text-blue-700">
+                      {currentQuestion.hint || `Look for information about ${currentQuestion.question.toLowerCase()} in the passage.`}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  {!showHint && (
+                    <button
+                      onClick={() => setShowHint(true)}
+                      className="flex-1 bg-purple-100 hover:bg-purple-200 text-purple-700 font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+                    >
+                      Need a hint?
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSubmitAnswer}
+                    disabled={!userAnswer.trim()}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                  >
+                    Submit Answer
+                  </button>
+                </div>
               </div>
             ) : (
               <div ref={feedbackRef} className="space-y-4">
                 <div className={`p-4 rounded-lg ${
                   currentAnswer?.isCorrect 
                     ? 'bg-green-50 border-2 border-green-300' 
-                    : 'bg-red-50 border-2 border-red-300'
+                    : 'bg-amber-50 border-2 border-amber-300'
                 }`}>
                   <div className="flex items-start gap-3 mb-3">
                     <span className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white font-bold ${
-                      currentAnswer?.isCorrect ? 'bg-green-500' : 'bg-red-500'
+                      currentAnswer?.isCorrect ? 'bg-green-500' : 'bg-amber-500'
                     }`}>
                       {currentAnswer?.isCorrect ? '✓' : '✗'}
                     </span>
                     <div>
-                      <p className="font-semibold text-lg">
-                        {currentAnswer?.isCorrect ? 'Correct!' : 'Not quite right'}
+                      <p className={`font-semibold text-lg ${
+                        currentAnswer?.isCorrect ? 'text-green-700' : 'text-amber-800'
+                      }`}>
+                        {currentAnswer?.isCorrect ? 'Great job!' : "Let's learn together!"}
                       </p>
                       <p className="text-sm text-gray-600">
                         Your answer: <span className="font-medium">{currentAnswer?.userAnswer}</span>
                       </p>
                       {!currentAnswer?.isCorrect && (
                         <p className="text-sm text-gray-600 mt-1">
-                          Expected: <span className="font-medium text-green-700">{currentQuestion.correctAnswer}</span>
+                          A better answer: <span className="font-medium text-green-700">{currentQuestion.correctAnswer}</span>
                         </p>
                       )}
                     </div>
                   </div>
 
                   <div className="mt-4 pt-4 border-t border-gray-300">
-                    <p className="font-semibold text-gray-800 mb-2">Explanation:</p>
+                    <p className="font-semibold text-gray-800 mb-2">Why this matters:</p>
                     <p className="text-gray-700 leading-relaxed mb-3">
                       {currentQuestion.explanation}
                     </p>
@@ -632,11 +698,23 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
                   </div>
                 </div>
 
+                {!canContinue && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                    <p className="text-sm text-blue-700">
+                      Take a moment to review the explanation... ({readingTimeLeft}s)
+                    </p>
+                  </div>
+                )}
+
                 <button
                   onClick={handleNext}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+                  disabled={!canContinue}
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors"
                 >
-                  {currentQuestionIndex < questions.length - 1 ? 'Next Question →' : 'See Results'}
+                  {canContinue 
+                    ? (currentQuestionIndex < questions.length - 1 ? 'I understand, continue →' : 'I understand, see results')
+                    : 'Reading explanation...'
+                  }
                 </button>
               </div>
             )}

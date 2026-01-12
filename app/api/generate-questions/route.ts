@@ -37,6 +37,7 @@ For each question provide:
 - explanation: Detailed explanation referencing the passage
 - difficulty: easy, medium, or hard
 - relevantPassageExcerpt: Short passage excerpt containing the answer
+- hint: A helpful hint that GUIDES the student to the right section WITHOUT revealing the answer (e.g., "Look at the section about the queen bee's main responsibilities" NOT "The queen lays eggs")
 
 Generate exactly 6 questions with mixed difficulty. Return ONLY valid JSON.`
         },

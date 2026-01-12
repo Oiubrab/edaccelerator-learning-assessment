@@ -12,6 +12,7 @@ export interface Question {
   difficulty: 'easy' | 'medium' | 'hard';
   type: 'short-answer' | 'fill-blank';
   relevantPassageExcerpt?: string;
+  hint?: string;
 }
 
 export interface UserAnswer {
