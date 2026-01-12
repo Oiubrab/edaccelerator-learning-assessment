@@ -113,6 +113,9 @@ const checkAnswer = (userAns: string, correctAns: string): boolean => {
          matchingKeyTerms >= threshold;
 }
 ```
+- Comprehensive test suite with 13 test cases
+- Validates exact matches, partial matches, and edge cases
+- Run tests with `npm test`
 
 #### 2. Responsive Layout
 - **Desktop**: Side-by-side passage and questions
@@ -132,21 +135,35 @@ const checkAnswer = (userAns: string, correctAns: string): boolean => {
 - Visual distinction between correct/incorrect
 - Constructive messaging focused on improvement
 
+#### 5. Automated Testing and CI/CD
+- Vitest test suite for answer validation logic
+- GitHub Actions workflow for continuous integration
+- Automated build verification on push
+- Error boundary for graceful error handling
+
 ## Project Structure
 
 ```
 edaccelerator-learning-assessment/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                # CI/CD pipeline
 ├── app/
 │   ├── api/
 │   │   └── generate-questions/
 │   │       └── route.ts          # OpenAI API integration
-│   ├── layout.tsx                # Root layout
+│   ├── layout.tsx                # Root layout with error boundary
 │   └── page.tsx                  # Main page with loading states
 ├── components/
+│   ├── ErrorBoundary.tsx         # Error handling component
 │   └── ReadingInterface.tsx      # Main interactive component
 ├── lib/
+│   ├── answerValidation.ts       # Answer checking logic
+│   ├── answerValidation.test.ts  # Test suite
 │   ├── data.ts                   # Passage data and chunks
 │   └── types.ts                  # TypeScript interfaces
+├── vercel.json                   # Vercel deployment config
+├── vitest.config.ts              # Test configuration
 └── .env.local                    # API keys (not committed)
 ```
 
@@ -177,6 +194,11 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to see the application.
+
+5. **Run tests**
+```bash
+npm test
+```
 
 ### Deploying to Vercel
 

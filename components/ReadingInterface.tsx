@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Question, UserAnswer } from '@/lib/types';
 import { passageChunks } from '@/lib/data';
+import { checkAnswer } from '@/lib/answerValidation';
 
 interface ReadingInterfaceProps {
   questions: Question[];
@@ -34,27 +35,6 @@ export default function ReadingInterface({ questions }: ReadingInterfaceProps) {
       feedbackRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [showFeedback]);
-
-  const normalizeAnswer = (answer: string): string => {
-    return answer.toLowerCase().trim().replace(/[.,!?;:]/g, '');
-  };
-
-  const checkAnswer = (userAns: string, correctAns: string): boolean => {
-    const normalized = normalizeAnswer(userAns);
-    const normalizedCorrect = normalizeAnswer(correctAns);
-    
-    // Check for exact match
-    if (normalized === normalizedCorrect) return true;
-    
-    // Check if user answer contains the key terms
-    const correctWords = normalizedCorrect.split(/\s+/);
-    const matchingWords = correctWords.filter(word => 
-      word.length > 3 && normalized.includes(word)
-    );
-    
-    // If most key words are present, consider it correct
-    return matchingWords.length >= Math.ceil(correctWords.length * 0.7);
-  };
 
   const handleSubmitAnswer = () => {
     if (!userAnswer.trim()) return;
